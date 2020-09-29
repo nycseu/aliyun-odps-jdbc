@@ -15,22 +15,23 @@
 
 package com.aliyun.odps.jdbc.utils;
 
-import com.aliyun.odps.sqa.FallbackPolicy;
-import com.aliyun.odps.utils.StringUtils;
-
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Type;
 import java.net.URLDecoder;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Collections;
 
+import com.aliyun.odps.sqa.FallbackPolicy;
+import com.aliyun.odps.utils.GsonObjectBuilder;
 import com.aliyun.odps.utils.StringUtils;
+import com.google.gson.reflect.TypeToken;
 
 public class ConnectionResource {
 
@@ -64,6 +65,7 @@ public class ConnectionResource {
   private static final String FALLBACK_FOR_UPGRADING_URL_KEY = "fallbackForUpgrading";
   private static final String FALLBACK_FOR_TIMEOUT_URL_KEY = "fallbackForRunningTimeout";
   private static final String FALLBACK_FOR_UNSUPPORTED_URL_KEY = "fallbackForUnsupportedFeature";
+  private static final String GLOBAL_SETTINGS_URL_KEY = "globalSettings";
   /**
    * Keys to retrieve properties from info.
    *
@@ -89,6 +91,7 @@ public class ConnectionResource {
   private static final String FALLBACK_FOR_UPGRADING_PROP_KEY = "fallback_for_upgrading";
   private static final String FALLBACK_FOR_TIMEOUT_PROP_KEY = "fallback_for_runningtimeout";
   private static final String FALLBACK_FOR_UNSUPPORTED_PROP_KEY = "fallback_for_unsupportedfeature";
+  private static final String GLOBAL_SETTINGS_PROP_KEY = "global_settings";
   // This is to support DriverManager.getConnection(url, user, password) API,
   // which put the 'user' and 'password' to the 'info'.
   // So the `access_id` and `access_key` have aliases.
@@ -112,6 +115,7 @@ public class ConnectionResource {
   private boolean enableOdpsLogger = false;
   private List<String> tableList = new ArrayList<>();
   private FallbackPolicy fallbackPolicy = FallbackPolicy.nonFallbackPolicy();
+  private Map<String, String> globalSettings = new HashMap<>();
 
   public static boolean acceptURL(String url) {
     return (url != null) && url.startsWith(JDBC_ODPS_URL_PREFIX);
@@ -141,13 +145,11 @@ public class ConnectionResource {
       maps.add(paramsInURL);
     }
 
-    accessId =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, null, ACCESS_ID_PROP_KEY_ALT,
-            ACCESS_ID_PROP_KEY, ACCESS_ID_URL_KEY);
-    accessKey =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, null, ACCESS_KEY_PROP_KEY_ALT,
-            ACCESS_KEY_PROP_KEY, ACCESS_KEY_URL_KEY);
+    accessId = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, null, ACCESS_ID_PROP_KEY_ALT, ACCESS_ID_PROP_KEY, ACCESS_ID_URL_KEY);
 
+    accessKey = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, null, ACCESS_KEY_PROP_KEY_ALT, ACCESS_KEY_PROP_KEY, ACCESS_KEY_URL_KEY);
     if (accessKey != null) {
       try {
         accessKey = URLDecoder.decode(accessKey, CHARSET_DEFAULT_VALUE);
@@ -156,59 +158,68 @@ public class ConnectionResource {
       }
     }
 
-    charset =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, CHARSET_DEFAULT_VALUE, CHARSET_PROP_KEY,
-            CHARSET_URL_KEY);
-    project =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, null, PROJECT_PROP_KEY, PROJECT_URL_KEY);
-    executeProject =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, null, EXECUTE_PROJECT_PROP_KEY, EXECUTE_PROJECT_URL_KEY);
-    logview =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, null, LOGVIEW_HOST_PROP_KEY, LOGVIEW_URL_KEY);
-    lifecycle =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, LIFECYCLE_DEFAULT_VALUE, LIFECYCLE_PROP_KEY,
-            LIFECYCLE_URL_KEY);
-    logLevel =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, null, LOGLEVEL_PROP_KEY, LOGLEVEL_URL_KEY);
+    charset = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, CHARSET_DEFAULT_VALUE, CHARSET_PROP_KEY, CHARSET_URL_KEY);
 
-    tunnelEndpoint =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, null, TUNNEL_ENDPOINT_PROP_KEY, TUNNEL_ENDPOINT_URL_KEY);
+    project = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, null, PROJECT_PROP_KEY, PROJECT_URL_KEY);
 
-    logConfFile =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, null, LOGCONFFILE_PROP_KEY,
-            LOGCONFFILE_URL_KEY);
-    interactiveMode = Boolean.valueOf(
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, "false", INTERACTIVE_MODE_PROP_KEY,
-            INTERACTIVE_MODE_URL_KEY));
-    interactiveServiceName =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, INTERACTIVE_SERVICE_NAME_DEFAULT_VALUE, SERVICE_NAME_PROP_KEY,
-            SERVICE_NAME_URL_KEY);
-    majorVersion =
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, MAJOR_VERSION_DEFAULT_VALUE, MAJOR_VERSION_PROP_KEY,
-            MAJOR_VERSION_URL_KEY);
-    enableOdpsLogger = Boolean.valueOf(
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, "false", ENABLE_ODPS_LOGGER_PROP_KEY, ENABLE_ODPS_LOGGER_URL_KEY)
+    executeProject = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, null, EXECUTE_PROJECT_PROP_KEY, EXECUTE_PROJECT_URL_KEY);
+
+    logview = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, null, LOGVIEW_HOST_PROP_KEY, LOGVIEW_URL_KEY);
+
+    lifecycle = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, LIFECYCLE_DEFAULT_VALUE, LIFECYCLE_PROP_KEY, LIFECYCLE_URL_KEY);
+
+    logLevel = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, null, LOGLEVEL_PROP_KEY, LOGLEVEL_URL_KEY);
+
+    tunnelEndpoint = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, null, TUNNEL_ENDPOINT_PROP_KEY, TUNNEL_ENDPOINT_URL_KEY);
+
+    logConfFile = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, null, LOGCONFFILE_PROP_KEY, LOGCONFFILE_URL_KEY);
+
+    interactiveMode = Boolean.valueOf(tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, "false", INTERACTIVE_MODE_PROP_KEY, INTERACTIVE_MODE_URL_KEY));
+
+    interactiveServiceName = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, INTERACTIVE_SERVICE_NAME_DEFAULT_VALUE, SERVICE_NAME_PROP_KEY, SERVICE_NAME_URL_KEY);
+
+    majorVersion = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, MAJOR_VERSION_DEFAULT_VALUE, MAJOR_VERSION_PROP_KEY, MAJOR_VERSION_URL_KEY);
+
+    enableOdpsLogger = Boolean.valueOf(tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, "false", ENABLE_ODPS_LOGGER_PROP_KEY, ENABLE_ODPS_LOGGER_URL_KEY)
     );
 
-    fallbackPolicy.fallback4ResourceNotEnough(Boolean.valueOf(
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, "false", FALLBACK_FOR_RESOURCE_PROP_KEY, FALLBACK_FOR_RESOURCE_URL_KEY)
-    ));
-    fallbackPolicy.fallback4RunningTimeout(Boolean.valueOf(
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, "false", FALLBACK_FOR_TIMEOUT_PROP_KEY, FALLBACK_FOR_TIMEOUT_URL_KEY)
-    ));
-    fallbackPolicy.fallback4Upgrading(Boolean.valueOf(
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, "false", FALLBACK_FOR_UPGRADING_PROP_KEY, FALLBACK_FOR_UPGRADING_URL_KEY)
-    ));
-    fallbackPolicy.fallback4UnsupportedFeature(Boolean.valueOf(
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, "false", FALLBACK_FOR_UNSUPPORTED_PROP_KEY, FALLBACK_FOR_UNSUPPORTED_URL_KEY)
-    ));
-    fallbackPolicy.fallback4UnknownError(Boolean.valueOf(
-        tryGetFirstNonNullValueByAltMapAndAltKey(maps, "false", FALLBACK_FOR_UNKNOWN_PROP_KEY, FALLBACK_FOR_UNKNOWN_URL_KEY)
-    ));
+    boolean fallback4ResourceNotEnough = Boolean.valueOf(tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, "false", FALLBACK_FOR_RESOURCE_PROP_KEY, FALLBACK_FOR_RESOURCE_URL_KEY));
+    fallbackPolicy.fallback4ResourceNotEnough(fallback4ResourceNotEnough);
+    boolean fallback4RunningTimeout = Boolean.valueOf(tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, "false", FALLBACK_FOR_TIMEOUT_PROP_KEY, FALLBACK_FOR_TIMEOUT_URL_KEY));
+    fallbackPolicy.fallback4RunningTimeout(fallback4RunningTimeout);
+    boolean fallback4Upgrading = Boolean.valueOf(tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, "false", FALLBACK_FOR_UPGRADING_PROP_KEY, FALLBACK_FOR_UPGRADING_URL_KEY));
+    fallbackPolicy.fallback4Upgrading(fallback4Upgrading);
+    boolean fallback4Unsupported = Boolean.valueOf(tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, "false", FALLBACK_FOR_UNSUPPORTED_PROP_KEY, FALLBACK_FOR_UNSUPPORTED_URL_KEY));
+    fallbackPolicy.fallback4UnsupportedFeature(fallback4Unsupported);
+    boolean fallback4UnknownError = Boolean.valueOf(tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, "false", FALLBACK_FOR_UNKNOWN_PROP_KEY, FALLBACK_FOR_UNKNOWN_URL_KEY));
+    fallbackPolicy.fallback4UnknownError(fallback4UnknownError);
 
+    String globalSettingsInJson = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, null, GLOBAL_SETTINGS_URL_KEY, GLOBAL_SETTINGS_PROP_KEY);
+    if (globalSettingsInJson != null) {
+      Type type = new TypeToken<Map<String, String>>() {}.getType();
+      globalSettings.putAll(GsonObjectBuilder.get().fromJson(globalSettingsInJson, type));
+    }
 
-    String tableStr = tryGetFirstNonNullValueByAltMapAndAltKey(maps, null, TABLE_LIST_PROP_KEY,
-        TABLE_LIST_URL_KEY);
+    String tableStr = tryGetFirstNonNullValueByAltMapAndAltKey(
+        maps, null, TABLE_LIST_PROP_KEY, TABLE_LIST_URL_KEY);
     if (!StringUtils.isNullOrEmpty(tableStr)) {
       Collections.addAll(tableList, tableStr.split(","));
     }
@@ -320,5 +331,9 @@ public class ConnectionResource {
 
   public FallbackPolicy getFallbackPolicy() {
     return fallbackPolicy;
+  }
+
+  public Map<String, String> getGlobalSettings() {
+    return globalSettings;
   }
 }
